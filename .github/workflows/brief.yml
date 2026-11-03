@@ -1,0 +1,30 @@
+# Optional: build the brief on a schedule (Opening Brief 08:30 IST, Closing Bell 16:00 IST).
+# NSE sometimes blocks cloud IPs; if this job reports source errors, run the pipeline locally instead.
+name: brief
+# Manual only for the submission: a scheduled run without the GEMINI_API_KEY secret (or from an IP that NSE
+# blocks) would commit a degraded brief over the reviewed one. To schedule it, add back e.g.
+#   schedule: [{cron: "0 3 * * 1-5"}, {cron: "30 10 * * 1-5"}]   # 08:30 / 16:00 IST
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/cache@v4
+        with: { path: .cache, key: finn-cache-${{ github.run_id }}, restore-keys: finn-cache- }
+      - run: pip install -r requirements.txt
+      - run: python -m pipeline.run_brief
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - name: Commit data
+        run: |
+          git config user.name "finn-bot"
+          git config user.email "finn-bot@users.noreply.github.com"
+          git add web/public/data
+          git diff --cached --quiet || git commit -m "brief: $(date -u +%F' '%H:%M) UTC"
+          git push

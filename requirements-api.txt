@@ -1,0 +1,10 @@
+# Research API only (what Render installs)
+pydantic>=2.6
+pyyaml>=6.0
+requests>=2.31
+curl_cffi>=0.7
+beautifulsoup4>=4.12
+pypdf>=4.2
+rapidfuzz>=3.6
+fastapi>=0.110
+uvicorn>=0.29

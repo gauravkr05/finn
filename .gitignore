@@ -1,0 +1,13 @@
+.env
+.cache/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+pipeline/out/
+web/node_modules/
+web/dist/
+web/.env
+web/.env.local
+.DS_Store
+node_modules/

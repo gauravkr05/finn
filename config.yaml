@@ -1,0 +1,103 @@
+# FINN configuration. Every tunable lives here: changing behaviour never needs a code change.
+
+portfolio:
+  # weight = share of the mock portfolio. kind: "lender" switches the results card to the
+  # bank/NBFC layout (EBITDA is not meaningful for lenders).
+  # bse_code is optional and only used if NSE is unreachable (BSE fallback). Look codes up on
+  # bseindia.com before relying on them.
+  - { symbol: HDFCBANK,   name: HDFC Bank,              sector: Banks,        weight: 0.09, kind: lender }
+  - { symbol: ICICIBANK,  name: ICICI Bank,             sector: Banks,        weight: 0.08, kind: lender }
+  - { symbol: BAJFINANCE, name: Bajaj Finance,          sector: NBFC,         weight: 0.06, kind: lender }
+  - { symbol: CDSL,       name: CDSL,                   sector: Capital mkts, weight: 0.03 }
+  - { symbol: INFY,       name: Infosys,                sector: IT services,  weight: 0.07 }
+  - { symbol: TCS,        name: TCS,                    sector: IT services,  weight: 0.07 }
+  - { symbol: KPITTECH,   name: KPIT Technologies,      sector: Auto software,weight: 0.03 }
+  - { symbol: RELIANCE,   name: Reliance Industries,    sector: Conglomerate, weight: 0.09 }
+  - { symbol: ITC,        name: ITC,                    sector: FMCG,         weight: 0.06 }
+  - { symbol: HINDUNILVR, name: Hindustan Unilever,     sector: FMCG,         weight: 0.05 }
+  - { symbol: TITAN,      name: Titan Company,          sector: Consumer,     weight: 0.05 }
+  - { symbol: ASIANPAINT, name: Asian Paints,           sector: Consumer,     weight: 0.04 }
+  - { symbol: TRENT,      name: Trent,                  sector: Retail,       weight: 0.04 }
+  - { symbol: MARUTI,     name: Maruti Suzuki,          sector: Auto,         weight: 0.05 }
+  - { symbol: SUNPHARMA,  name: Sun Pharma,             sector: Pharma,       weight: 0.05 }
+  - { symbol: LT,         name: Larsen & Toubro,        sector: Infra,        weight: 0.06 }
+  - { symbol: POLYCAB,    name: Polycab India,          sector: Electricals,  weight: 0.04 }
+  - { symbol: DIXON,      name: Dixon Technologies,     sector: Electronics,  weight: 0.04 }
+
+# Context strip on the Today screen (Yahoo symbols).
+context_indices:
+  - { symbol: "^NSEI",     label: Nifty 50 }
+  - { symbol: "^INDIAVIX", label: India VIX }
+
+brief:
+  lookback_days: 14          # filings fetched per run; the app filters 24h / 3d / 1w / custom inside this
+  price_days: 120            # calendar days of EOD history fetched (≈ 80 trading days)
+  timezone: Asia/Kolkata
+  # Rough ₹ per unit, only used to size foreign-currency amounts in filings ("CAD 5,000", "USD 25 mn")
+  # against market cap. Order-of-magnitude accuracy is enough; no need to keep these current.
+  fx_to_inr: { USD: 86, EUR: 97, GBP: 114, CAD: 62, AUD: 56, SGD: 66, AED: 23.4, SAR: 23, QAR: 23.6,
+               JPY: 0.58, CHF: 105, CNY: 12, HKD: 11, MYR: 19, ZAR: 4.8, NZD: 51, SEK: 9, NOK: 8.4, DKK: 13 }
+
+alerts:                      # defaults; each investor overrides them on the Rules screen
+  volume_multiple: 2.0
+  price_move_pct: 4.0
+  lookback_days: 20
+  categories: [results, M&A, management_change, litigation, pledging, credit_rating, fund_raise]
+
+triage:
+  base_weights:
+    results: 10
+    M&A: 9
+    management_change: 8
+    litigation: 8
+    pledging: 7
+    fund_raise: 4.5
+    credit_rating: 6
+    capex: 5
+    insider_trading: 5
+    press_release: 3
+    dividend: 2
+    bonus_split: 2
+    earnings_call: 2
+    investor_meetings: 0.6
+    agm_egm: 0.6
+    postal_ballot: 0.6
+    unclassified: 0.2
+  tiers: { critical: 7.5, high: 4.5, medium: 1.8 }   # score thresholds; below medium = routine
+  preference_boost: 1.25                             # category the investor follows
+  recency_bonus: 0.5                                 # filed in the last 24h of the window
+
+enrich:
+  max_results_cards: 25      # cap per run (results season can be busy)
+  max_people_cards: 10
+  oneliner_batch: 15         # medium-tier one-liners are summarised in batches, one model call per batch
+
+promises:
+  transcripts: 4
+  partly_band_relative: 0.20   # growth/amount guidance: "partly" if within 20% below the lower bound
+  partly_band_points: 1.0      # margin guidance: "partly" if within 1 percentage point below
+  max_qualitative: 6
+
+guardrails:
+  quote_match_threshold: 90    # 0–100 fuzzy match score a quote needs to count as found in the source
+
+models:
+  # Routing: "cheap" does bulk extraction/classification, "strong" only synthesis and judgement.
+  # Model names change over time. List what your key can use with:  python -m core.llm --list
+  # cheap: gemini-3.5-flash has only 20 free requests/day (shared with strong), so cheap uses flash-lite,
+  # which has its own free quota. Decided 2026-11-03. (-latest / 3.7 / 3.8-flash were also returning 503.)
+  cheap:  { provider: gemini, name: gemini-3.5-flash-lite, thinking_budget: 0 }   # 0 = no thinking tokens
+  # strong: pro models return 429 "limit: 0" on the free tier, so strong = gemini-3.5-flash WITH its
+  # default thinking (no thinking_budget key = no thinkingConfig sent). Falls back to cheap on 404/quota 429.
+  # 2026-11-03: gemini-3.5-flash's 20/day free quota was used up before the deadline, so strong runs on
+  # gemini-3-flash-preview (separate free quota, thinks by default). Promise judging never falls back to cheap.
+  strong: { provider: gemini, name: gemini-3-flash-preview, thinking_budget: 4096 }  # thinking on, capped (it used >8k tokens on bull/bear)   # or gemini-pro-latest with billing, or { provider: anthropic, name: <claude model> }
+  thinking_headroom_tokens: 8192   # extra maxOutputTokens for models that think (thinking counts against it)
+  timeout_s: 90                # per-request timeout; timeouts/connection errors are retried with backoff
+  min_interval_s: 4.5          # spacing between calls, keeps free-tier rate limits happy
+  max_retries: 1               # retries after a schema-validation failure
+  # Price per 1M tokens, used only for the cost ledger's "if this were paid" estimate.
+  # Free tier costs ₹0; set these to the provider's current list prices to see paid-tier cost.
+  price_per_mtok:
+    cheap:  { input: 0.30, output: 2.50 }
+    strong: { input: 1.25, output: 10.0 }
